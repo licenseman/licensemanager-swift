@@ -1,6 +1,6 @@
 {
 	"name": "licensemanager-swift",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"private": true,
 	"description": "Release tooling of the LicenseManager Swift SDK (the package itself is distributed with SwiftPM).",
 	"license": "MIT",

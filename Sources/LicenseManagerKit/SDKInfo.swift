@@ -4,5 +4,5 @@ extension LicenseManager {
     /// Name of this SDK.
     public static let sdkName = "licensemanager-swift"
     /// Version of this SDK.
-    public static let sdkVersion = "0.0.0"
+    public static let sdkVersion = "1.0.0"
 }
