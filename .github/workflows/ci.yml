@@ -49,10 +49,12 @@ jobs:
           LICENSEMANAGER_TEST_KEYCHAIN: "1"
       - name: Coverage (80% of lines)
         run: |
-          binary=$(find .build/debug/ -path '*.xctest/Contents/MacOS/*' -type f | head -1)
-          xcrun llvm-cov report "$binary" -instr-profile=.build/debug/codecov/default.profdata \
+          bin=$(swift build --show-bin-path)
+          binary="$bin/licensemanager-swiftPackageTests.xctest/Contents/MacOS/licensemanager-swiftPackageTests"
+          profile="$bin/codecov/default.profdata"
+          xcrun llvm-cov report "$binary" -instr-profile="$profile" \
             -ignore-filename-regex='Tests/|\.build/' | tee coverage.txt
-          xcrun llvm-cov export "$binary" -instr-profile=.build/debug/codecov/default.profdata \
+          xcrun llvm-cov export "$binary" -instr-profile="$profile" \
             -ignore-filename-regex='Tests/|\.build/' -format=lcov > lcov.info
           percent=$(awk '/^TOTAL/ { print $(NF-3) }' coverage.txt | tr -d '%')
           echo "Line coverage: $percent%"
