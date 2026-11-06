@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release-${{ github.ref }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, to tag releases on the commit that set the version
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action@v1
+        id: changesets
+        with:
+          publish: pnpm release
+          version: pnpm run version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-merge the "Version Packages" PR. Merges made with GITHUB_TOKEN do not
+      # trigger a new workflow run, so release from the merge commit in this job.
+      - name: Merge Version Packages PR
+        id: merge
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.changesets.outputs.pullRequestNumber }}
+        run: |
+          gh pr merge "$PR" --merge --delete-branch
+          echo "sha=$(gh pr view "$PR" --json mergeCommit --jq .mergeCommit.oid)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out merge commit
+        if: steps.merge.outputs.sha != ''
+        run: |
+          git fetch origin "${{ steps.merge.outputs.sha }}"
+          git checkout --detach "${{ steps.merge.outputs.sha }}"
+
+      # SwiftPM has no registry: publishing is the git tag, which SwiftPM
+      # resolves and the Swift Package Index picks up. Tag the current version
+      # and create its GitHub release, once.
+      - name: Create tag and GitHub release
+        if: steps.changesets.outputs.hasChangesets == 'false' || steps.merge.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$version" = "0.0.0" ]; then
+            echo "Nothing released yet"
+            exit 0
+          fi
+          # Bare semver tags (1.2.3), the SwiftPM convention
+          tag="$version"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists"
+            exit 0
+          fi
+          grep -q "sdkVersion = \"$version\"" Sources/LicenseManagerKit/SDKInfo.swift \
+            || { echo "SDKInfo.swift is not at $version"; exit 1; }
+          awk -v v="$version" '$0 == "## " v { f = 1; next } /^## / { if (f) exit } f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          # The commit that set the version, not HEAD
+          target=$(git log -1 --format=%H -G'"version"' -- package.json)
+          gh release create "$tag" --target "$target" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"

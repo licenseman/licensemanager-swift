@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  # Called by release.yml on pushes to main
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changeset:
+    # Every PR declares its version bump (or `pnpm changeset --empty` for none).
+    # Skipped on the "Version Packages" PR, which consumes the changesets.
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm changeset status --since=origin/${{ github.base_ref }}
+
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version && swift --version
+      - run: swift format lint --strict --recursive Sources Tests Examples Package.swift
+
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version && swift --version
+      - run: swift build -Xswiftc -warnings-as-errors
+      - name: Test (with the real keychain)
+        run: swift test --enable-code-coverage
+        env:
+          LICENSEMANAGER_TEST_KEYCHAIN: "1"
+      - name: Coverage (80% of lines)
+        run: |
+          binary=$(find .build/debug/ -path '*.xctest/Contents/MacOS/*' -type f | head -1)
+          xcrun llvm-cov report "$binary" -instr-profile=.build/debug/codecov/default.profdata \
+            -ignore-filename-regex='Tests/|\.build/' | tee coverage.txt
+          xcrun llvm-cov export "$binary" -instr-profile=.build/debug/codecov/default.profdata \
+            -ignore-filename-regex='Tests/|\.build/' -format=lcov > lcov.info
+          percent=$(awk '/^TOTAL/ { print $(NF-3) }' coverage.txt | tr -d '%')
+          echo "Line coverage: $percent%"
+          awk -v p="$percent" 'BEGIN { exit (p >= 80) ? 0 : 1 }'
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.txt
+            lcov.info
+
+  example:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build --package-path Examples/LicenseManagerExample -Xswiftc -warnings-as-errors
+
+  release-build:
+    # Release builds (optimizations, no @testable) must compile too.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release -Xswiftc -warnings-as-errors
+
+  compat:
+    # Storage and fingerprint are compatible with @licenseman/electron.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/compat/electron-store.mjs write "$RUNNER_TEMP/compat"
+      - run: swift test --filter CompatibilityTests
+        env:
+          LICENSEMANAGER_COMPAT_DIR: ${{ runner.temp }}/compat
+      - run: node scripts/compat/electron-store.mjs read "$RUNNER_TEMP/compat"
