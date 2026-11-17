@@ -17,6 +17,21 @@ struct ValidateKeyRequest: Codable, Sendable, Equatable {
     var platform: String
 }
 
+/// CPU architecture the app runs on.
+private let architecture: String = {
+    #if arch(arm64)
+        return "arm64"
+    #elseif arch(x86_64)
+        return "x86_64"
+    #else
+        return "unknown"
+    #endif
+}()
+
+/// User agent sent to the license server, telling which SDK and OS the
+/// validation comes from, e.g. `licensemanager-swift/1.1.0 (macOS 15.1; arm64)`.
+let userAgent = "\(LicenseManager.sdkName)/\(LicenseManager.sdkVersion) (\(defaultPlatform()); \(architecture))"
+
 /// Characters `encodeURIComponent` leaves as-is.
 private let uriComponentAllowed = CharacterSet(
     charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
@@ -46,7 +61,7 @@ func postValidateKey(
             HTTPRequest(
                 method: "POST",
                 url: url,
-                headers: ["Content-Type": "application/json"],
+                headers: ["Content-Type": "application/json", "User-Agent": userAgent],
                 body: try JSONEncoder().encode(request),
                 timeoutMs: max(0, min(timeoutMs, requestTimeoutMs))
             )

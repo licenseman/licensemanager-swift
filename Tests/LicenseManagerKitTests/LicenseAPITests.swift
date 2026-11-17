@@ -34,6 +34,8 @@ struct LicenseAPITests {
         #expect(call.request.url.absoluteString == "https://api.test/v1/products/a%2Fb/validate-key")
         #expect(call.body == request)
         #expect(call.request.timeoutMs == 10_000)
+        let userAgent = try #require(call.request.headers["User-Agent"])
+        #expect(userAgent.hasPrefix("licensemanager-swift/\(LicenseManager.sdkVersion) (macOS"))
     }
 
     @Test("caps the timeout at 10 seconds and the remaining budget")
