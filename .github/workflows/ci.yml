@@ -19,11 +19,11 @@ jobs:
     if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -33,14 +33,14 @@ jobs:
   lint:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: xcodebuild -version && swift --version
       - run: swift format lint --strict --recursive Sources Tests Examples Package.swift
 
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: xcodebuild -version && swift --version
       - run: swift build -Xswiftc -warnings-as-errors
       - name: Test (with the real keychain)
@@ -60,7 +60,7 @@ jobs:
           echo "Line coverage: $percent%"
           awk -v p="$percent" 'BEGIN { exit (p >= 80) ? 0 : 1 }'
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: |
@@ -70,22 +70,22 @@ jobs:
   example:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: swift build --package-path Examples/LicenseManagerExample -Xswiftc -warnings-as-errors
 
   release-build:
     # Release builds (optimizations, no @testable) must compile too.
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: swift build -c release -Xswiftc -warnings-as-errors
 
   compat:
     # Storage and fingerprint are compatible with @licenseman/electron.
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: node scripts/compat/electron-store.mjs write "$RUNNER_TEMP/compat"
